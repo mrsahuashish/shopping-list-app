@@ -196,6 +196,26 @@ export function subscribeToAuth(callback: (user: User | null) => void) {
   });
 }
 
+// User category functions
+export async function getUserCategories(uid: string): Promise<string[]> {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  if (userDoc.exists()) {
+    return userDoc.data().customCategories || [];
+  }
+  return [];
+}
+
+export async function saveUserCategory(uid: string, category: string): Promise<void> {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  if (!userDoc.exists()) return;
+  const existing: string[] = userDoc.data().customCategories || [];
+  if (!existing.includes(category)) {
+    await updateDoc(doc(db, 'users', uid), {
+      customCategories: [...existing, category],
+    });
+  }
+}
+
 // Shopping list functions
 export async function initializeShoppingList(dateStr: string, userId: string) {
   const docId = `${userId}_${dateStr}`;
