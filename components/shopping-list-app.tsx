@@ -177,16 +177,15 @@ export default function ShoppingListApp() {
         </div>
 
         {Object.keys(groupedItems).length === 0 ? (
-          <div className="flex flex-col items-center justify-center mt-12 text-center">
-            <div className="text-4xl mb-2">🎉</div>
-            <p className="text-muted-foreground">
-              {activeTab === 'done' ? 'No completed items yet.' : 'No items to show.'}
-            </p>
+          <div className="flex flex-col items-center justify-center mt-16 text-center px-6">
+            <div className="text-6xl mb-4">🛒</div>
+            <p className="text-lg font-semibold text-foreground mb-2">Your list is empty</p>
+            <p className="text-sm text-muted-foreground mb-6">Tap the + button to add your first item!</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="mt-4 text-primary hover:underline text-sm font-medium"
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
             >
-              Add your first item
+              Add Item
             </button>
           </div>
         ) : (
