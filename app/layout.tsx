@@ -12,7 +12,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Shopping List - Stay Organized',
   description: 'A simple and effective shopping list app to manage your daily essentials',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
