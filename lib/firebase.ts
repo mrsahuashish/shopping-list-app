@@ -1,12 +1,12 @@
 'use client';
 
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  User as FirebaseUser,
+  sendEmailVerification as firebaseSendEmailVerification,
   onAuthStateChanged
 } from 'firebase/auth';
 import {
@@ -16,12 +16,10 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
   getDocs,
   onSnapshot,
-  writeBatch
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -40,7 +38,9 @@ export const db = getFirestore(app);
 export interface User {
   uid: string;
   email: string;
-  displayName?: string;
+  name: string;
+  mobile?: string;
+  emailVerified: boolean;
 }
 
 export interface ShoppingItem {
@@ -50,8 +50,6 @@ export interface ShoppingItem {
   done: boolean;
   createdAt: number;
 }
-
-// No seed data - users start with empty lists
 
 export const categoryEmojis: Record<string, string> = {
   'Cleaning Supplies': '🧹',
@@ -64,37 +62,81 @@ export const categoryEmojis: Record<string, string> = {
   'Beverages': '☕',
 };
 
-// Authentication functions
-export async function signUp(email: string, password: string, displayName: string): Promise<User> {
+// Registration: creates Firebase Auth user, saves to Firestore, sends verification email
+export async function signUp(
+  name: string,
+  email: string,
+  mobile: string,
+  pin: string,
+  password: string
+): Promise<User> {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  const firebaseUser = userCredential.user;
-  
-  // Save user profile to Firestore
-  await setDoc(doc(db, 'users', firebaseUser.uid), {
-    email: firebaseUser.email,
-    displayName,
+  const fbUser = userCredential.user;
+
+  await setDoc(doc(db, 'users', fbUser.uid), {
+    name,
+    email,
+    mobile,
+    pin,
     createdAt: new Date().toISOString(),
+    emailVerified: false,
   });
-  
+
+  await firebaseSendEmailVerification(fbUser);
+
   return {
-    uid: firebaseUser.uid,
-    email: firebaseUser.email || '',
-    displayName,
+    uid: fbUser.uid,
+    email,
+    name,
+    mobile,
+    emailVerified: false,
   };
 }
 
+// PIN login: queries Firestore by email, verifies PIN, returns user (no Firebase Auth session)
+export async function loginWithPin(email: string, pin: string): Promise<User> {
+  const snapshot = await getDocs(
+    query(collection(db, 'users'), where('email', '==', email))
+  );
+
+  if (snapshot.empty) {
+    throw new Error('No account found with this email');
+  }
+
+  const userDoc = snapshot.docs[0];
+  const data = userDoc.data();
+
+  if (data.pin !== pin) {
+    throw new Error('Incorrect PIN');
+  }
+
+  if (!data.emailVerified) {
+    throw new Error('EMAIL_NOT_VERIFIED');
+  }
+
+  return {
+    uid: userDoc.id,
+    email: data.email,
+    name: data.name,
+    mobile: data.mobile,
+    emailVerified: true,
+  };
+}
+
+// Password login: uses Firebase Auth (session persisted)
 export async function login(email: string, password: string): Promise<User> {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
-  const firebaseUser = userCredential.user;
-  
-  // Get user profile
-  const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-  const userData = userDoc.data();
-  
+  const fbUser = userCredential.user;
+
+  const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+  const data = userDoc.data();
+
   return {
-    uid: firebaseUser.uid,
-    email: firebaseUser.email || '',
-    displayName: userData?.displayName,
+    uid: fbUser.uid,
+    email: fbUser.email || '',
+    name: data?.name || data?.displayName || '',
+    mobile: data?.mobile,
+    emailVerified: fbUser.emailVerified,
   };
 }
 
@@ -102,16 +144,51 @@ export async function logout(): Promise<void> {
   await signOut(auth);
 }
 
+// Reloads Firebase Auth user, marks Firestore emailVerified if confirmed
+export async function checkAndMarkEmailVerified(uid: string): Promise<boolean> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return false;
+  await currentUser.reload();
+  if (currentUser.emailVerified) {
+    await updateDoc(doc(db, 'users', uid), { emailVerified: true });
+    return true;
+  }
+  return false;
+}
+
+export async function resendVerificationEmail(): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('No authenticated user');
+  await firebaseSendEmailVerification(currentUser);
+}
+
+// Reloads Firebase Auth user and returns fresh User object
+export async function getRefreshedUser(): Promise<User | null> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return null;
+  await currentUser.reload();
+  const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+  const data = userDoc.data();
+  return {
+    uid: currentUser.uid,
+    email: currentUser.email || '',
+    name: data?.name || data?.displayName || '',
+    mobile: data?.mobile,
+    emailVerified: currentUser.emailVerified,
+  };
+}
+
 export function subscribeToAuth(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, async (firebaseUser) => {
-    if (firebaseUser) {
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      const userData = userDoc.data();
-      
+  return onAuthStateChanged(auth, async (fbUser) => {
+    if (fbUser) {
+      const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+      const data = userDoc.data();
       callback({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        displayName: userData?.displayName,
+        uid: fbUser.uid,
+        email: fbUser.email || '',
+        name: data?.name || data?.displayName || '',
+        mobile: data?.mobile,
+        emailVerified: fbUser.emailVerified,
       });
     } else {
       callback(null);
@@ -124,9 +201,7 @@ export async function initializeShoppingList(dateStr: string, userId: string) {
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
   const docSnap = await getDoc(docRef);
-  
   if (!docSnap.exists()) {
-    // Create empty list for new date
     await setDoc(docRef, {
       userId,
       date: dateStr,
@@ -140,7 +215,6 @@ export async function initializeShoppingList(dateStr: string, userId: string) {
 export async function getShoppingList(dateStr: string, userId: string): Promise<ShoppingItem[]> {
   const docId = `${userId}_${dateStr}`;
   const docSnap = await getDoc(doc(db, 'shopping_lists', docId));
-  
   if (docSnap.exists()) {
     return docSnap.data().items || [];
   }
@@ -151,7 +225,6 @@ export async function addItem(dateStr: string, userId: string, item: ShoppingIte
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
   const docSnap = await getDoc(docRef);
-  
   if (docSnap.exists()) {
     const items = docSnap.data().items || [];
     await updateDoc(docRef, {
@@ -165,13 +238,11 @@ export async function toggleItem(dateStr: string, userId: string, itemId: string
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
   const docSnap = await getDoc(docRef);
-  
   if (docSnap.exists()) {
     const items = docSnap.data().items || [];
     const updatedItems = items.map((item: ShoppingItem) =>
       item.id === itemId ? { ...item, done: !item.done } : item
     );
-    
     await updateDoc(docRef, {
       items: updatedItems,
       updatedAt: new Date().toISOString(),
@@ -183,11 +254,9 @@ export async function deleteItem(dateStr: string, userId: string, itemId: string
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
   const docSnap = await getDoc(docRef);
-  
   if (docSnap.exists()) {
     const items = docSnap.data().items || [];
     const updatedItems = items.filter((item: ShoppingItem) => item.id !== itemId);
-    
     await updateDoc(docRef, {
       items: updatedItems,
       updatedAt: new Date().toISOString(),
@@ -195,10 +264,13 @@ export async function deleteItem(dateStr: string, userId: string, itemId: string
   }
 }
 
-export function subscribeToShoppingList(dateStr: string, userId: string, callback: (items: ShoppingItem[]) => void) {
+export function subscribeToShoppingList(
+  dateStr: string,
+  userId: string,
+  callback: (items: ShoppingItem[]) => void
+) {
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
-  
   return onSnapshot(docRef, (docSnap) => {
     if (docSnap.exists()) {
       callback(docSnap.data().items || []);

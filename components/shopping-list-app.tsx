@@ -13,6 +13,7 @@ import Toast from './toast';
 import WelcomeScreen from './welcome-screen';
 import RegisterScreen from './register-screen';
 import LoginScreen from './login-screen';
+import EmailVerificationScreen from './email-verification-screen';
 
 type TabType = 'today' | 'all' | 'done';
 type AuthScreen = 'welcome' | 'register' | 'login';
@@ -139,6 +140,11 @@ export default function ShoppingListApp() {
         />
       );
     }
+  }
+
+  // User exists but email not yet verified
+  if (user && !user.emailVerified) {
+    return <EmailVerificationScreen email={user.email} uid={user.uid} />;
   }
 
   if (loading) {

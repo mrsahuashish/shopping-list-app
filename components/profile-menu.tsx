@@ -1,21 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { logout } from '@/lib/firebase';
+import { useAuth } from '@/lib/auth-context';
 
 interface ProfileMenuProps {
-  displayName?: string;
+  name?: string;
   email: string;
   onLogout: () => void;
 }
 
-export default function ProfileMenu({ displayName, email, onLogout }: ProfileMenuProps) {
+export default function ProfileMenu({ name, email, onLogout }: ProfileMenuProps) {
+  const { signOutUser } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = async () => {
-    await logout();
+    setIsOpen(false);
+    await signOutUser();
     onLogout();
   };
+
+  const initial = name?.[0]?.toUpperCase() || 'U';
 
   return (
     <div className="relative">
@@ -23,13 +27,13 @@ export default function ProfileMenu({ displayName, email, onLogout }: ProfileMen
         onClick={() => setIsOpen(!isOpen)}
         className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold hover:bg-blue-700 transition-colors"
       >
-        {displayName?.[0].toUpperCase() || 'U'}
+        {initial}
       </button>
 
       {isOpen && (
         <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg z-50">
           <div className="p-4 border-b border-slate-200">
-            <p className="font-semibold text-slate-900">{displayName}</p>
+            <p className="font-semibold text-slate-900">{name}</p>
             <p className="text-sm text-slate-600">{email}</p>
           </div>
           <button
