@@ -32,7 +32,7 @@ export default function ShoppingListApp() {
   useEffect(() => {
     if (!authLoading) {
       if (user) {
-        initializeShoppingList(dateStr).then(() => {
+        initializeShoppingList(dateStr, user.uid).then(() => {
           setLoading(false);
         });
       } else {
@@ -42,13 +42,16 @@ export default function ShoppingListApp() {
   }, [dateStr, user, authLoading]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToShoppingList(dateStr, (newItems) => {
-      setItems(newItems);
-    });
-    return () => unsubscribe();
-  }, [dateStr]);
+    if (user) {
+      const unsubscribe = subscribeToShoppingList(dateStr, user.uid, (newItems) => {
+        setItems(newItems);
+      });
+      return () => unsubscribe();
+    }
+  }, [dateStr, user]);
 
   const handleAddItem = async (name: string, category: string) => {
+    if (!user) return;
     const newItem: ShoppingItem = {
       id: Date.now().toString(),
       name,
@@ -56,13 +59,14 @@ export default function ShoppingListApp() {
       done: false,
       createdAt: Date.now(),
     };
-    await addItem(dateStr, newItem);
+    await addItem(dateStr, user.uid, newItem);
     setShowAddModal(false);
     setToastMessage(`Added "${name}" to your list`);
   };
 
   const handleToggleItem = async (itemId: string) => {
-    await toggleItem(dateStr, itemId);
+    if (!user) return;
+    await toggleItem(dateStr, user.uid, itemId);
     const item = items.find(i => i.id === itemId);
     if (item) {
       setToastMessage(item.done ? `"${item.name}" moved to today` : `"${item.name}" completed`);
@@ -70,13 +74,12 @@ export default function ShoppingListApp() {
   };
 
   const handleDeleteConfirm = async () => {
-    if (deleteItemId) {
-      const item = items.find(i => i.id === deleteItemId);
-      await deleteItem(dateStr, deleteItemId);
-      setDeleteItemId(null);
-      if (item) {
-        setToastMessage(`Deleted "${item.name}"`);
-      }
+    if (!user || !deleteItemId) return;
+    const item = items.find(i => i.id === deleteItemId);
+    await deleteItem(dateStr, user.uid, deleteItemId);
+    setDeleteItemId(null);
+    if (item) {
+      setToastMessage(`Deleted "${item.name}"`);
     }
   };
 
@@ -97,6 +100,18 @@ export default function ShoppingListApp() {
   const totalItems = items.length;
   const completedItems = items.filter(i => i.done).length;
   const progressPercent = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
+
+  // Show loading until auth state is determined
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-border rounded-full animate-spin border-t-primary"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show auth screens if not logged in
   if (!user) {

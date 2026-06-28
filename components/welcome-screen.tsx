@@ -33,7 +33,7 @@ export default function WelcomeScreen({ onSignUp, onLogin }: WelcomeScreenProps)
         </div>
 
         <p className="text-center text-xs text-slate-400">
-          Demo: Use any email and any 4-digit PIN
+          Powered by Firebase
         </p>
       </div>
     </div>

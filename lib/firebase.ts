@@ -1,9 +1,41 @@
-// Demo shopping list with authentication - uses in-memory storage with localStorage persistence
 'use client';
 
-let listData: ShoppingItem[] = [];
-let currentUser: { uid: string; email: string; displayName?: string } | null = null;
-let authListeners: Set<(user: any) => void> = new Set();
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  signOut,
+  User as FirebaseUser,
+  onAuthStateChanged
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  writeBatch
+} from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: "my-shopping-list-fcc58.firebaseapp.com",
+  projectId: "my-shopping-list-fcc58",
+  storageBucket: "my-shopping-list-fcc58.firebasestorage.app",
+  messagingSenderId: "141283356923",
+  appId: "1:141283356923:web:e93b822571f35f9cf0805e"
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 export interface User {
   uid: string;
@@ -17,11 +49,6 @@ export interface ShoppingItem {
   category: string;
   done: boolean;
   createdAt: number;
-}
-
-export interface DateDoc {
-  items: ShoppingItem[];
-  lastUpdated: number;
 }
 
 // Seed data for first launch
@@ -96,163 +123,147 @@ export const categoryEmojis: Record<string, string> = {
   'Beverages': '☕',
 };
 
-const listeners: Set<(items: ShoppingItem[]) => void> = new Set();
-
-function notifyListeners() {
-  listeners.forEach(callback => callback([...listData]));
-  // Save to localStorage
-  try {
-    localStorage.setItem('shopping_list', JSON.stringify(listData));
-  } catch (e) {
-    console.error('Failed to save to localStorage:', e);
-  }
-}
-
-export async function initializeShoppingList(dateStr: string) {
-  // Load from localStorage
-  try {
-    const saved = localStorage.getItem('shopping_list');
-    if (saved) {
-      listData = JSON.parse(saved);
-    } else {
-      // First time - seed with demo data
-      listData = Object.values(seedData).flat();
-      localStorage.setItem('shopping_list', JSON.stringify(listData));
-    }
-    notifyListeners();
-  } catch (error) {
-    console.error('Error initializing shopping list:', error);
-    // Fallback to seed data
-    listData = Object.values(seedData).flat();
-    notifyListeners();
-  }
-}
-
-export async function getShoppingList(dateStr: string): Promise<ShoppingItem[]> {
-  return [...listData];
-}
-
-export async function addItem(dateStr: string, item: ShoppingItem) {
-  listData.push(item);
-  notifyListeners();
-}
-
-export async function toggleItem(dateStr: string, itemId: string) {
-  const item = listData.find(i => i.id === itemId);
-  if (item) {
-    item.done = !item.done;
-    notifyListeners();
-  }
-}
-
-export async function deleteItem(dateStr: string, itemId: string) {
-  listData = listData.filter(item => item.id !== itemId);
-  notifyListeners();
-}
-
-export function subscribeToShoppingList(dateStr: string, callback: (items: ShoppingItem[]) => void) {
-  listeners.add(callback);
-  // Immediately call with current data
-  callback([...listData]);
+// Authentication functions
+export async function signUp(email: string, password: string, displayName: string): Promise<User> {
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  const firebaseUser = userCredential.user;
   
-  // Return unsubscribe function
-  return () => {
-    listeners.delete(callback);
+  // Save user profile to Firestore
+  await setDoc(doc(db, 'users', firebaseUser.uid), {
+    email: firebaseUser.email,
+    displayName,
+    createdAt: new Date().toISOString(),
+  });
+  
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || '',
+    displayName,
   };
 }
 
-// Authentication functions
-const users: Record<string, { email: string; pin: string; displayName: string }> = {};
-
-function notifyAuthListeners() {
-  authListeners.forEach(callback => callback(currentUser));
-}
-
-export async function signUp(email: string, pin: string, displayName: string): Promise<User> {
-  // Demo - in production use real Firebase
-  if (users[email]) {
-    throw new Error('Email already registered');
-  }
+export async function login(email: string, password: string): Promise<User> {
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  const firebaseUser = userCredential.user;
   
-  if (pin.length !== 4 || !/^\d+$/.test(pin)) {
-    throw new Error('PIN must be 4 digits');
-  }
+  // Get user profile
+  const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+  const userData = userDoc.data();
   
-  const uid = `user_${Date.now()}`;
-  users[email] = { email, pin, displayName };
-  
-  currentUser = { uid, email, displayName };
-  localStorage.setItem('current_user', JSON.stringify(currentUser));
-  
-  // Initialize shopping list for this user
-  listData = Object.values(seedData).flat();
-  localStorage.setItem(`shopping_list_${uid}`, JSON.stringify(listData));
-  
-  notifyAuthListeners();
-  return currentUser;
-}
-
-export async function login(email: string, pin: string): Promise<User> {
-  // Demo - in production use real Firebase
-  const user = users[email];
-  if (!user) {
-    throw new Error('Email not found');
-  }
-  
-  if (user.pin !== pin) {
-    throw new Error('Incorrect PIN');
-  }
-  
-  const uid = `user_${Object.keys(users).indexOf(email)}`;
-  currentUser = { uid, email, displayName: user.displayName };
-  localStorage.setItem('current_user', JSON.stringify(currentUser));
-  
-  // Load user's shopping list
-  const saved = localStorage.getItem(`shopping_list_${uid}`);
-  if (saved) {
-    listData = JSON.parse(saved);
-  } else {
-    listData = Object.values(seedData).flat();
-    localStorage.setItem(`shopping_list_${uid}`, JSON.stringify(listData));
-  }
-  
-  notifyAuthListeners();
-  return currentUser;
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || '',
+    displayName: userData?.displayName,
+  };
 }
 
 export async function logout(): Promise<void> {
-  currentUser = null;
-  listData = [];
-  localStorage.removeItem('current_user');
-  notifyAuthListeners();
-}
-
-export function getCurrentUser(): User | null {
-  return currentUser;
+  await signOut(auth);
 }
 
 export function subscribeToAuth(callback: (user: User | null) => void) {
-  authListeners.add(callback);
-  // Check localStorage on init
-  try {
-    const saved = localStorage.getItem('current_user');
-    if (saved) {
-      currentUser = JSON.parse(saved);
-      const uid = currentUser?.uid;
-      if (uid && currentUser) {
-        const listSaved = localStorage.getItem(`shopping_list_${uid}`);
-        if (listSaved) {
-          listData = JSON.parse(listSaved);
-        }
-      }
+  return onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      const userData = userDoc.data();
+      
+      callback({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        displayName: userData?.displayName,
+      });
+    } else {
+      callback(null);
     }
-  } catch (e) {
-    console.error('Error loading user session:', e);
+  });
+}
+
+// Shopping list functions
+export async function initializeShoppingList(dateStr: string, userId: string) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  const docSnap = await getDoc(docRef);
+  
+  if (!docSnap.exists()) {
+    // First time - seed with default items
+    const seedItems = Object.values(seedData).flat();
+    await setDoc(docRef, {
+      userId,
+      date: dateStr,
+      items: seedItems,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
   }
+}
+
+export async function getShoppingList(dateStr: string, userId: string): Promise<ShoppingItem[]> {
+  const docId = `${userId}_${dateStr}`;
+  const docSnap = await getDoc(doc(db, 'shopping_lists', docId));
   
-  callback(currentUser);
+  if (docSnap.exists()) {
+    return docSnap.data().items || [];
+  }
+  return [];
+}
+
+export async function addItem(dateStr: string, userId: string, item: ShoppingItem) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  const docSnap = await getDoc(docRef);
   
-  return () => {
-    authListeners.delete(callback);
-  };
+  if (docSnap.exists()) {
+    const items = docSnap.data().items || [];
+    await updateDoc(docRef, {
+      items: [...items, item],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
+export async function toggleItem(dateStr: string, userId: string, itemId: string) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    const items = docSnap.data().items || [];
+    const updatedItems = items.map((item: ShoppingItem) =>
+      item.id === itemId ? { ...item, done: !item.done } : item
+    );
+    
+    await updateDoc(docRef, {
+      items: updatedItems,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
+export async function deleteItem(dateStr: string, userId: string, itemId: string) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    const items = docSnap.data().items || [];
+    const updatedItems = items.filter((item: ShoppingItem) => item.id !== itemId);
+    
+    await updateDoc(docRef, {
+      items: updatedItems,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
+export function subscribeToShoppingList(dateStr: string, userId: string, callback: (items: ShoppingItem[]) => void) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data().items || []);
+    } else {
+      callback([]);
+    }
+  });
 }

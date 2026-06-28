@@ -10,7 +10,7 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onSuccess, onBack }: LoginScreenProps) {
   const [email, setEmail] = useState('');
-  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +20,7 @@ export default function LoginScreen({ onSuccess, onBack }: LoginScreenProps) {
     setLoading(true);
 
     try {
-      await login(email, pin);
+      await login(email, password);
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -49,15 +49,14 @@ export default function LoginScreen({ onSuccess, onBack }: LoginScreenProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-200 mb-2">PIN (4 digits)</label>
+            <label className="block text-sm font-medium text-slate-200 mb-2">Password</label>
             <input
               type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="0000"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your password"
               required
-              maxLength={4}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-2xl text-center tracking-widest"
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
