@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ShoppingItem, subscribeToShoppingList, toggleItem, deleteItem, addItem, initializeShoppingList, categoryEmojis } from '@/lib/firebase';
+import { useAuth } from '@/lib/auth-context';
 import Header from './header';
 import TabBar from './tab-bar';
 import DateCard from './date-card';
@@ -9,24 +10,36 @@ import ItemRow from './item-row';
 import AddItemModal from './add-item-modal';
 import DeleteConfirmModal from './delete-confirm-modal';
 import Toast from './toast';
+import WelcomeScreen from './welcome-screen';
+import RegisterScreen from './register-screen';
+import LoginScreen from './login-screen';
 
 type TabType = 'today' | 'all' | 'done';
+type AuthScreen = 'welcome' | 'register' | 'login';
 
 export default function ShoppingListApp() {
+  const { user, loading: authLoading } = useAuth();
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
 
   const dateStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    initializeShoppingList(dateStr).then(() => {
-      setLoading(false);
-    });
-  }, [dateStr]);
+    if (!authLoading) {
+      if (user) {
+        initializeShoppingList(dateStr).then(() => {
+          setLoading(false);
+        });
+      } else {
+        setLoading(false);
+      }
+    }
+  }, [dateStr, user, authLoading]);
 
   useEffect(() => {
     const unsubscribe = subscribeToShoppingList(dateStr, (newItems) => {
@@ -85,6 +98,34 @@ export default function ShoppingListApp() {
   const completedItems = items.filter(i => i.done).length;
   const progressPercent = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
 
+  // Show auth screens if not logged in
+  if (!user) {
+    if (authScreen === 'welcome') {
+      return (
+        <WelcomeScreen
+          onSignUp={() => setAuthScreen('register')}
+          onLogin={() => setAuthScreen('login')}
+        />
+      );
+    }
+    if (authScreen === 'register') {
+      return (
+        <RegisterScreen
+          onSuccess={() => setAuthScreen('welcome')}
+          onBack={() => setAuthScreen('welcome')}
+        />
+      );
+    }
+    if (authScreen === 'login') {
+      return (
+        <LoginScreen
+          onSuccess={() => setAuthScreen('welcome')}
+          onBack={() => setAuthScreen('welcome')}
+        />
+      );
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -96,9 +137,13 @@ export default function ShoppingListApp() {
     );
   }
 
+  const handleLogout = () => {
+    setAuthScreen('welcome');
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
-      <Header />
+      <Header onLogout={handleLogout} />
       
       <div className="flex-1 overflow-y-auto pb-20 px-4 pt-4 md:max-w-2xl md:mx-auto md:w-full">
         <DateCard date={dateStr} />

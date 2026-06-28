@@ -1,8 +1,22 @@
-export default function Header() {
+'use client';
+
+import ProfileMenu from './profile-menu';
+import { useAuth } from '@/lib/auth-context';
+
+interface HeaderProps {
+  onLogout?: () => void;
+}
+
+export default function Header({ onLogout }: HeaderProps) {
+  const { user } = useAuth();
+
   return (
-    <header className="bg-primary text-primary-foreground px-4 py-4 md:max-w-2xl md:mx-auto md:w-full">
-      <h1 className="text-2xl font-bold">Shopping List</h1>
-      <p className="text-sm opacity-90">Stay organized with your daily essentials</p>
+    <header className="bg-slate-900 text-white px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 className="text-2xl font-bold">Shopping List</h1>
+        {user && <p className="text-sm text-slate-300">Hello, {user.displayName || 'there'}</p>}
+      </div>
+      {user && <ProfileMenu displayName={user.displayName} email={user.email} onLogout={onLogout || (() => {})} />}
     </header>
   );
 }

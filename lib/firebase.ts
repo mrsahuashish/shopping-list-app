@@ -1,5 +1,15 @@
-// Demo shopping list - uses in-memory storage with localStorage persistence
+// Demo shopping list with authentication - uses in-memory storage with localStorage persistence
+'use client';
+
 let listData: ShoppingItem[] = [];
+let currentUser: { uid: string; email: string; displayName?: string } | null = null;
+let authListeners: Set<(user: any) => void> = new Set();
+
+export interface User {
+  uid: string;
+  email: string;
+  displayName?: string;
+}
 
 export interface ShoppingItem {
   id: string;
@@ -148,5 +158,101 @@ export function subscribeToShoppingList(dateStr: string, callback: (items: Shopp
   // Return unsubscribe function
   return () => {
     listeners.delete(callback);
+  };
+}
+
+// Authentication functions
+const users: Record<string, { email: string; pin: string; displayName: string }> = {};
+
+function notifyAuthListeners() {
+  authListeners.forEach(callback => callback(currentUser));
+}
+
+export async function signUp(email: string, pin: string, displayName: string): Promise<User> {
+  // Demo - in production use real Firebase
+  if (users[email]) {
+    throw new Error('Email already registered');
+  }
+  
+  if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+    throw new Error('PIN must be 4 digits');
+  }
+  
+  const uid = `user_${Date.now()}`;
+  users[email] = { email, pin, displayName };
+  
+  currentUser = { uid, email, displayName };
+  localStorage.setItem('current_user', JSON.stringify(currentUser));
+  
+  // Initialize shopping list for this user
+  listData = Object.values(seedData).flat();
+  localStorage.setItem(`shopping_list_${uid}`, JSON.stringify(listData));
+  
+  notifyAuthListeners();
+  return currentUser;
+}
+
+export async function login(email: string, pin: string): Promise<User> {
+  // Demo - in production use real Firebase
+  const user = users[email];
+  if (!user) {
+    throw new Error('Email not found');
+  }
+  
+  if (user.pin !== pin) {
+    throw new Error('Incorrect PIN');
+  }
+  
+  const uid = `user_${Object.keys(users).indexOf(email)}`;
+  currentUser = { uid, email, displayName: user.displayName };
+  localStorage.setItem('current_user', JSON.stringify(currentUser));
+  
+  // Load user's shopping list
+  const saved = localStorage.getItem(`shopping_list_${uid}`);
+  if (saved) {
+    listData = JSON.parse(saved);
+  } else {
+    listData = Object.values(seedData).flat();
+    localStorage.setItem(`shopping_list_${uid}`, JSON.stringify(listData));
+  }
+  
+  notifyAuthListeners();
+  return currentUser;
+}
+
+export async function logout(): Promise<void> {
+  currentUser = null;
+  listData = [];
+  localStorage.removeItem('current_user');
+  notifyAuthListeners();
+}
+
+export function getCurrentUser(): User | null {
+  return currentUser;
+}
+
+export function subscribeToAuth(callback: (user: User | null) => void) {
+  authListeners.add(callback);
+  // Check localStorage on init
+  try {
+    const saved = localStorage.getItem('current_user');
+    if (saved) {
+      currentUser = JSON.parse(saved);
+      const uid = currentUser?.uid;
+      if (uid && currentUser) {
+        const listSaved = localStorage.getItem(`shopping_list_${uid}`);
+        if (listSaved) {
+          listData = JSON.parse(listSaved);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error loading user session:', e);
+  }
+  
+  callback(currentUser);
+  
+  return () => {
+    authListeners.delete(callback);
   };
 }
