@@ -1,12 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ShoppingItem, subscribeToShoppingList, toggleItem, deleteItem, addItem, updateItem, initializeShoppingList, categoryEmojis } from '@/lib/firebase';
+import { useEffect, useRef, useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { ShoppingItem, subscribeToShoppingList, toggleItem, deleteItem, addItem, updateItem, reorderItems, initializeShoppingList, categoryEmojis } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import Header from './header';
 import TabBar from './tab-bar';
 import DateCard from './date-card';
-import ItemRow from './item-row';
+import SortableItemRow from './sortable-item-row';
 import AddItemModal from './add-item-modal';
 import DeleteConfirmModal from './delete-confirm-modal';
 import Toast from './toast';
@@ -23,7 +33,9 @@ type AuthScreen = 'welcome' | 'register' | 'login';
 export default function ShoppingListApp() {
   const { user, loading: authLoading } = useAuth();
   const [items, setItems] = useState<ShoppingItem[]>([]);
+  const itemsRef = useRef<ShoppingItem[]>([]); // always holds latest items for drag handler
   const [activeTab, setActiveTab] = useState<TabType>('today');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<ShoppingItem | null>(null);
@@ -50,10 +62,70 @@ export default function ShoppingListApp() {
     if (user) {
       const unsubscribe = subscribeToShoppingList(dateStr, user.uid, (newItems) => {
         setItems(newItems);
+        itemsRef.current = newItems;
       });
       return () => unsubscribe();
     }
   }, [dateStr, user]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    setSelectedCategory(null);
+  };
+
+  const handleCategoryDragEnd = async (event: DragEndEvent, category: string) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !user) return;
+
+    // Use itemsRef so we always have the freshest items even if a snapshot fired mid-drag
+    const currentItems = itemsRef.current;
+
+    // Visible items for this category in the current display
+    const currentTabItems = currentItems.filter(item => {
+      if (activeTab === 'done') return item.done;
+      if (activeTab === 'today') return !item.done;
+      return true;
+    });
+    const visibleItems = currentTabItems.filter(i => i.category === category);
+
+    const oldIndex = visibleItems.findIndex(i => i.id === active.id);
+    const newIndex = visibleItems.findIndex(i => i.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newVisibleOrder = arrayMove(visibleItems, oldIndex, newIndex);
+    const visibleIdSet = new Set(visibleItems.map(i => i.id));
+
+    // Rebuild category order — preserve non-visible items (e.g. done items on Today tab)
+    const allCategoryItems = currentItems.filter(i => i.category === category);
+    let vi = 0;
+    const newCategoryItems = allCategoryItems.map(item =>
+      visibleIdSet.has(item.id) ? newVisibleOrder[vi++] : item
+    );
+
+    // Rebuild full items array
+    let ci = 0;
+    const newAllItems = currentItems.map(item =>
+      item.category === category ? newCategoryItems[ci++] : item
+    );
+
+    // Optimistic update so the UI feels instant
+    setItems(newAllItems);
+    itemsRef.current = newAllItems;
+
+    try {
+      await reorderItems(dateStr, user.uid, newAllItems);
+    } catch {
+      // Rollback on failure so next load shows the correct (pre-drag) order
+      setItems(currentItems);
+      itemsRef.current = currentItems;
+      setToastMessage('Could not save order. Please try again.');
+    }
+  };
 
   const handleAddItem = async (name: string, category: string, imageUrl?: string) => {
     if (!user) return;
@@ -96,16 +168,23 @@ export default function ShoppingListApp() {
     }
   };
 
-  const filteredItems = items.filter(item => {
+  // Items matching the active tab
+  const tabItems = items.filter(item => {
     if (activeTab === 'done') return item.done;
     if (activeTab === 'today') return !item.done;
     return true;
   });
 
+  // Unique categories present in the current tab, preserving insertion order
+  const availableCategories = Array.from(new Set(tabItems.map(i => i.category)));
+
+  // Further filter by selected category
+  const filteredItems = selectedCategory
+    ? tabItems.filter(i => i.category === selectedCategory)
+    : tabItems;
+
   const groupedItems = filteredItems.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
-    }
+    if (!acc[item.category]) acc[item.category] = [];
     acc[item.category].push(item);
     return acc;
   }, {} as Record<string, ShoppingItem[]>);
@@ -114,19 +193,17 @@ export default function ShoppingListApp() {
   const completedItems = items.filter(i => i.done).length;
   const progressPercent = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
 
-  // Show loading until auth state is determined
   if (authLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-border rounded-full animate-spin border-t-primary"></div>
+          <div className="w-12 h-12 border-4 border-border rounded-full animate-spin border-t-primary" />
           <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
-  // Show auth screens if not logged in
   if (!user) {
     if (authScreen === 'welcome') {
       return (
@@ -154,7 +231,6 @@ export default function ShoppingListApp() {
     }
   }
 
-  // User exists but email not yet verified
   if (user && !user.emailVerified) {
     return <EmailVerificationScreen email={user.email} uid={user.uid} />;
   }
@@ -163,7 +239,7 @@ export default function ShoppingListApp() {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-border rounded-full animate-spin border-t-primary"></div>
+          <div className="w-12 h-12 border-4 border-border rounded-full animate-spin border-t-primary" />
           <p className="text-muted-foreground">Loading your list...</p>
         </div>
       </div>
@@ -177,10 +253,11 @@ export default function ShoppingListApp() {
   return (
     <div className="flex flex-col h-screen bg-background">
       <Header onLogout={handleLogout} onAddItem={() => setShowAddModal(true)} />
-      
+
       <div className="flex-1 overflow-y-auto pb-16 px-4 pt-3 md:max-w-2xl md:mx-auto md:w-full">
         <DateCard date={dateStr} />
 
+        {/* Progress bar */}
         <div className="mt-3 px-3 py-2.5 bg-secondary rounded-lg">
           <div className="flex justify-between items-center mb-1.5">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Progress</span>
@@ -194,17 +271,65 @@ export default function ShoppingListApp() {
           </div>
         </div>
 
+        {/* Category filter pills — only shown when 2+ categories exist */}
+        {availableCategories.length > 1 && (
+          <div className="mt-3 -mx-4 px-4 overflow-x-auto scrollbar-none">
+            <div className="flex gap-1.5 pb-0.5" style={{ width: 'max-content' }}>
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                  !selectedCategory
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground'
+                }`}
+              >
+                All
+              </button>
+              {availableCategories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                    selectedCategory === cat
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground'
+                  }`}
+                >
+                  <span>{categoryEmojis[cat] || '📦'}</span>
+                  <span>{cat}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Item list */}
         {Object.keys(groupedItems).length === 0 ? (
           <div className="flex flex-col items-center justify-center mt-16 text-center px-6">
-            <div className="text-5xl mb-3">🛒</div>
-            <p className="text-base font-semibold text-foreground mb-1">Your list is empty</p>
-            <p className="text-sm text-muted-foreground mb-5">Tap the + button in the top-right to add items.</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              Add Item
-            </button>
+            {selectedCategory ? (
+              <>
+                <div className="text-4xl mb-3">{categoryEmojis[selectedCategory] || '📦'}</div>
+                <p className="text-base font-semibold text-foreground mb-1">No items in {selectedCategory}</p>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="mt-3 px-4 py-1.5 text-xs font-medium border border-border rounded-full text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                >
+                  Clear filter
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl mb-3">🛒</div>
+                <p className="text-base font-semibold text-foreground mb-1">Your list is empty</p>
+                <p className="text-sm text-muted-foreground mb-5">Tap the + button in the top-right to add items.</p>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  Add Item
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -213,26 +338,40 @@ export default function ShoppingListApp() {
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5 px-0.5">
                   <span>{categoryEmojis[category] || '📦'}</span>
                   <span>{category}</span>
+                  <span className="ml-auto font-normal normal-case tracking-normal">
+                    {categoryItems.length}
+                  </span>
                 </h3>
-                <div className="space-y-1.5">
-                  {categoryItems.map(item => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      onToggle={() => handleToggleItem(item.id)}
-                      onDelete={() => setDeleteItemId(item.id)}
-                      onEdit={() => setEditItem(item)}
-                      onViewImage={item.imageUrl ? () => setViewImageItem(item) : undefined}
-                    />
-                  ))}
-                </div>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleCategoryDragEnd(e, category)}
+                >
+                  <SortableContext
+                    items={categoryItems.map(i => i.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-1.5">
+                      {categoryItems.map(item => (
+                        <SortableItemRow
+                          key={item.id}
+                          item={item}
+                          onToggle={() => handleToggleItem(item.id)}
+                          onDelete={() => setDeleteItemId(item.id)}
+                          onEdit={() => setEditItem(item)}
+                          onViewImage={item.imageUrl ? () => setViewImageItem(item) : undefined}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
 
       {showAddModal && (
         <AddItemModal

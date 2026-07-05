@@ -301,6 +301,11 @@ export async function updateItem(
   }
 }
 
+export async function reorderItems(dateStr: string, userId: string, newItems: ShoppingItem[]): Promise<void> {
+  const docRef = doc(db, 'shopping_lists', `${userId}_${dateStr}`);
+  await updateDoc(docRef, { items: newItems, updatedAt: new Date().toISOString() });
+}
+
 export async function deleteItem(dateStr: string, userId: string, itemId: string) {
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);

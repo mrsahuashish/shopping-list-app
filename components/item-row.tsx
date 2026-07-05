@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { ShoppingItem } from '@/lib/firebase';
+import { ShoppingItem, categoryEmojis } from '@/lib/firebase';
 
 interface ItemRowProps {
   item: ShoppingItem;
@@ -10,9 +10,19 @@ interface ItemRowProps {
   onDelete: () => void;
   onEdit: () => void;
   onViewImage?: () => void;
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
+  isDragging?: boolean;
 }
 
-export default function ItemRow({ item, onToggle, onDelete, onEdit, onViewImage }: ItemRowProps) {
+export default function ItemRow({
+  item,
+  onToggle,
+  onDelete,
+  onEdit,
+  onViewImage,
+  dragHandleProps,
+  isDragging,
+}: ItemRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +47,30 @@ export default function ItemRow({ item, onToggle, onDelete, onEdit, onViewImage 
   };
 
   return (
-    <div className={`flex items-center gap-2.5 px-3 py-2 bg-card border border-border/70 rounded-lg transition-colors ${item.done ? 'opacity-60' : 'hover:border-border'}`}>
+    <div className={`flex items-center gap-2 px-2.5 py-2 bg-card border rounded-lg transition-all ${
+      isDragging
+        ? 'border-primary/40 shadow-lg ring-1 ring-primary/20 opacity-60'
+        : 'border-border/70 hover:border-border'
+    }`}>
+
+      {/* Drag handle */}
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          className="flex-shrink-0 p-1 cursor-grab active:cursor-grabbing text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors touch-none select-none"
+          aria-label="Drag to reorder"
+        >
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+            <circle cx="5.5" cy="3.5" r="1.2" />
+            <circle cx="10.5" cy="3.5" r="1.2" />
+            <circle cx="5.5" cy="8" r="1.2" />
+            <circle cx="10.5" cy="8" r="1.2" />
+            <circle cx="5.5" cy="12.5" r="1.2" />
+            <circle cx="10.5" cy="12.5" r="1.2" />
+          </svg>
+        </div>
+      )}
+
       {/* Checkbox */}
       <button
         onClick={onToggle}
@@ -57,26 +90,29 @@ export default function ItemRow({ item, onToggle, onDelete, onEdit, onViewImage 
         <button
           type="button"
           onClick={() => onViewImage?.()}
-          className="flex-shrink-0 w-8 h-8 rounded-md overflow-hidden border border-border/50 hover:opacity-80 transition-opacity"
+          className="flex-shrink-0 w-9 h-9 rounded-md overflow-hidden border border-border/50 hover:opacity-80 transition-opacity"
           aria-label="View photo"
         >
           <Image
             src={item.imageUrl}
             alt={item.name}
-            width={32}
-            height={32}
+            width={36}
+            height={36}
             className="object-cover w-full h-full"
             unoptimized
           />
         </button>
       )}
 
-      {/* Name */}
+      {/* Name + category */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${
+        <p className={`text-sm font-medium leading-snug line-clamp-2 ${
           item.done ? 'line-through text-muted-foreground' : 'text-foreground'
         }`}>
           {item.name}
+        </p>
+        <p className="text-xs text-muted-foreground/70 mt-0.5">
+          {categoryEmojis[item.category] || '📦'} {item.category}
         </p>
       </div>
 
@@ -100,30 +136,23 @@ export default function ItemRow({ item, onToggle, onDelete, onEdit, onViewImage 
               onClick={() => { setMenuOpen(false); onEdit(); }}
               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
             >
-              <span>✏️</span>
-              <span>Edit item</span>
+              <span>✏️</span><span>Edit item</span>
             </button>
-
             <button
               onClick={handleGoogleSearch}
               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
             >
-              <span>🔍</span>
-              <span>Search on Google</span>
+              <span>🔍</span><span>Search on Google</span>
             </button>
-
             {item.imageUrl && (
               <button
                 onClick={() => { setMenuOpen(false); onViewImage?.(); }}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
               >
-                <span>🖼️</span>
-                <span>View photo</span>
+                <span>🖼️</span><span>View photo</span>
               </button>
             )}
-
             <div className="border-t border-border my-1" />
-
             <button
               onClick={() => { setMenuOpen(false); onDelete(); }}
               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
