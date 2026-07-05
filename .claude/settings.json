@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/f/2. SahioNext/05_PROJECTS/My Perosnal use Project/shopping-list-app\" && ls -la)",
+      "Read(//f/f/2. SahioNext/05_PROJECTS/My Perosnal use Project/**)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

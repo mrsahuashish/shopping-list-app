@@ -49,6 +49,7 @@ export interface ShoppingItem {
   category: string;
   done: boolean;
   createdAt: number;
+  imageUrl?: string;
 }
 
 export const categoryEmojis: Record<string, string> = {

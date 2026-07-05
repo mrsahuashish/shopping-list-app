@@ -1,30 +1,56 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { categoryEmojis, getUserCategories, saveUserCategory } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 
 interface AddItemModalProps {
-  onAdd: (name: string, category: string) => void;
+  onAdd: (name: string, category: string, imageUrl?: string) => void;
   onClose: () => void;
 }
 
 const PRESET_CATEGORIES = Object.entries(categoryEmojis);
+const IMGBB_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY;
+
+async function uploadToImgBB(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('image', file);
+  const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw new Error('Image upload failed');
+  const json = await res.json();
+  return json.data.url as string;
+}
 
 export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
   const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [itemName, setItemName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Produce');
   const [mode, setMode] = useState<'preset' | 'custom'>('preset');
   const [customCategory, setCustomCategory] = useState('');
   const [userCategories, setUserCategories] = useState<string[]>([]);
 
-  // Load this user's saved custom categories
+  // Image state
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
   useEffect(() => {
-    if (user) {
-      getUserCategories(user.uid).then(setUserCategories);
-    }
+    if (user) getUserCategories(user.uid).then(setUserCategories);
   }, [user]);
+
+  // Revoke object URL on unmount to avoid memory leak
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
 
   const selectPreset = (cat: string) => {
     setSelectedCategory(cat);
@@ -35,11 +61,27 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
   const activeFinalCategory =
     mode === 'custom' ? customCategory.trim() : selectedCategory;
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setUploadError('');
+  };
+
+  const removeImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview(null);
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName.trim() || !activeFinalCategory || !user) return;
 
-    // Persist new custom category to this user's Firestore doc
     if (mode === 'custom' && customCategory.trim()) {
       await saveUserCategory(user.uid, customCategory.trim());
       setUserCategories((prev) =>
@@ -47,15 +89,28 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
       );
     }
 
-    onAdd(itemName.trim(), activeFinalCategory);
+    let imageUrl: string | undefined;
+    if (imageFile) {
+      setUploading(true);
+      setUploadError('');
+      try {
+        imageUrl = await uploadToImgBB(imageFile);
+      } catch {
+        setUploadError('Image upload failed. Item will be saved without photo.');
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    onAdd(itemName.trim(), activeFinalCategory, imageUrl);
     setItemName('');
     setSelectedCategory('Produce');
     setMode('preset');
     setCustomCategory('');
+    removeImage();
   };
 
-  const canSubmit = !!itemName.trim() && !!activeFinalCategory;
-
+  const canSubmit = !!itemName.trim() && !!activeFinalCategory && !uploading;
   const presetNames = PRESET_CATEGORIES.map(([cat]) => cat);
 
   return (
@@ -69,9 +124,7 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Item Name */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Item Name
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-2">Item Name</label>
             <input
               type="text"
               value={itemName}
@@ -84,11 +137,8 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Category
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-2">Category</label>
 
-            {/* Preset pills */}
             <div className="flex flex-wrap gap-2 mb-2">
               {PRESET_CATEGORIES.map(([cat, emoji]) => (
                 <button
@@ -104,8 +154,6 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
                   {emoji} {cat}
                 </button>
               ))}
-
-              {/* Other preset */}
               <button
                 type="button"
                 onClick={() => selectPreset('Other')}
@@ -119,7 +167,6 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
               </button>
             </div>
 
-            {/* User's saved custom categories — only shown if they have any */}
             {userCategories.filter((c) => !presetNames.includes(c) && c !== 'Other').length > 0 && (
               <div>
                 <p className="text-xs text-muted-foreground mb-1.5">Your categories</p>
@@ -144,13 +191,9 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
               </div>
             )}
 
-            {/* Custom category input */}
             <button
               type="button"
-              onClick={() => {
-                setMode('custom');
-                setSelectedCategory('');
-              }}
+              onClick={() => { setMode('custom'); setSelectedCategory(''); }}
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                 mode === 'custom'
                   ? 'bg-primary text-primary-foreground border-primary'
@@ -171,7 +214,6 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
               />
             )}
 
-            {/* Selected label */}
             {activeFinalCategory && (
               <p className="text-xs text-muted-foreground mt-2">
                 Selected:{' '}
@@ -179,6 +221,65 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
                   {categoryEmojis[activeFinalCategory] ?? '📦'} {activeFinalCategory}
                 </span>
               </p>
+            )}
+          </div>
+
+          {/* Photo — optional */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Photo{' '}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+
+            {!imagePreview ? (
+              /* Upload button */
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-sm font-medium">Add Photo (optional)</span>
+              </button>
+            ) : (
+              /* Preview */
+              <div className="relative w-full">
+                <div className="relative w-full h-40 rounded-lg overflow-hidden border border-border">
+                  <Image
+                    src={imagePreview}
+                    alt="Preview"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-sm transition-colors"
+                  aria-label="Remove image"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+
+            {uploadError && (
+              <p className="text-xs text-destructive mt-1">{uploadError}</p>
             )}
           </div>
 
@@ -195,7 +296,7 @@ export default function AddItemModal({ onAdd, onClose }: AddItemModalProps) {
               disabled={!canSubmit}
               className="flex-1 py-2 px-4 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              Add Item
+              {uploading ? 'Uploading...' : 'Add Item'}
             </button>
           </div>
         </form>

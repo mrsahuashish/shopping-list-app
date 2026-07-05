@@ -51,7 +51,7 @@ export default function ShoppingListApp() {
     }
   }, [dateStr, user]);
 
-  const handleAddItem = async (name: string, category: string) => {
+  const handleAddItem = async (name: string, category: string, imageUrl?: string) => {
     if (!user) return;
     const newItem: ShoppingItem = {
       id: Date.now().toString(),
@@ -59,6 +59,7 @@ export default function ShoppingListApp() {
       category,
       done: false,
       createdAt: Date.now(),
+      ...(imageUrl ? { imageUrl } : {}),
     };
     await addItem(dateStr, user.uid, newItem);
     setShowAddModal(false);

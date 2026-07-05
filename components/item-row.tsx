@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { ShoppingItem } from '@/lib/firebase';
 
 interface ItemRowProps {
@@ -19,7 +20,21 @@ export default function ItemRow({ item, onToggle, onDelete }: ItemRowProps) {
       >
         {item.done && <span className="text-white text-sm">✓</span>}
       </button>
-      
+
+      {/* Thumbnail — only shown when imageUrl exists */}
+      {item.imageUrl && (
+        <div className="flex-shrink-0 w-10 h-10 rounded-md overflow-hidden border border-border">
+          <Image
+            src={item.imageUrl}
+            alt={item.name}
+            width={40}
+            height={40}
+            className="object-cover w-full h-full"
+            unoptimized
+          />
+        </div>
+      )}
+
       <div className="flex-1 min-w-0">
         <p
           className={`text-sm font-medium truncate ${
