@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ShoppingItem, subscribeToShoppingList, toggleItem, deleteItem, addItem, initializeShoppingList, categoryEmojis } from '@/lib/firebase';
+import { ShoppingItem, subscribeToShoppingList, toggleItem, deleteItem, addItem, updateItem, initializeShoppingList, categoryEmojis } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import Header from './header';
 import TabBar from './tab-bar';
@@ -14,6 +14,8 @@ import WelcomeScreen from './welcome-screen';
 import RegisterScreen from './register-screen';
 import LoginScreen from './login-screen';
 import EmailVerificationScreen from './email-verification-screen';
+import EditItemModal from './edit-item-modal';
+import ImageViewModal from './image-view-modal';
 
 type TabType = 'today' | 'all' | 'done';
 type AuthScreen = 'welcome' | 'register' | 'login';
@@ -24,6 +26,8 @@ export default function ShoppingListApp() {
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<ShoppingItem | null>(null);
+  const [viewImageItem, setViewImageItem] = useState<ShoppingItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
@@ -73,6 +77,13 @@ export default function ShoppingListApp() {
     if (item) {
       setToastMessage(item.done ? `"${item.name}" moved to today` : `"${item.name}" completed`);
     }
+  };
+
+  const handleUpdateItem = async (id: string, name: string, category: string, imageUrl?: string) => {
+    if (!user) return;
+    await updateItem(dateStr, user.uid, id, name, category, imageUrl);
+    setEditItem(null);
+    setToastMessage(`Updated "${name}"`);
   };
 
   const handleDeleteConfirm = async () => {
@@ -210,6 +221,8 @@ export default function ShoppingListApp() {
                       item={item}
                       onToggle={() => handleToggleItem(item.id)}
                       onDelete={() => setDeleteItemId(item.id)}
+                      onEdit={() => setEditItem(item)}
+                      onViewImage={item.imageUrl ? () => setViewImageItem(item) : undefined}
                     />
                   ))}
                 </div>
@@ -240,6 +253,22 @@ export default function ShoppingListApp() {
           itemName={items.find(i => i.id === deleteItemId)?.name || 'item'}
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteItemId(null)}
+        />
+      )}
+
+      {editItem && (
+        <EditItemModal
+          item={editItem}
+          onSave={handleUpdateItem}
+          onClose={() => setEditItem(null)}
+        />
+      )}
+
+      {viewImageItem?.imageUrl && (
+        <ImageViewModal
+          imageUrl={viewImageItem.imageUrl}
+          itemName={viewImageItem.name}
+          onClose={() => setViewImageItem(null)}
         />
       )}
 

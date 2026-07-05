@@ -271,6 +271,36 @@ export async function toggleItem(dateStr: string, userId: string, itemId: string
   }
 }
 
+export async function updateItem(
+  dateStr: string,
+  userId: string,
+  itemId: string,
+  name: string,
+  category: string,
+  imageUrl?: string
+) {
+  const docId = `${userId}_${dateStr}`;
+  const docRef = doc(db, 'shopping_lists', docId);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    const items = docSnap.data().items || [];
+    const updatedItems = items.map((item: ShoppingItem) => {
+      if (item.id !== itemId) return item;
+      const newItem: ShoppingItem = { ...item, name, category };
+      if (imageUrl) {
+        newItem.imageUrl = imageUrl;
+      } else {
+        delete newItem.imageUrl;
+      }
+      return newItem;
+    });
+    await updateDoc(docRef, {
+      items: updatedItems,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
 export async function deleteItem(dateStr: string, userId: string, itemId: string) {
   const docId = `${userId}_${dateStr}`;
   const docRef = doc(db, 'shopping_lists', docId);
