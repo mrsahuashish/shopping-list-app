@@ -176,45 +176,45 @@ export default function ShoppingListApp() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <Header onLogout={handleLogout} />
+      <Header onLogout={handleLogout} onAddItem={() => setShowAddModal(true)} />
       
-      <div className="flex-1 overflow-y-auto pb-20 px-4 pt-4 md:max-w-2xl md:mx-auto md:w-full">
+      <div className="flex-1 overflow-y-auto pb-16 px-4 pt-3 md:max-w-2xl md:mx-auto md:w-full">
         <DateCard date={dateStr} />
-        
-        <div className="mt-4 p-3 bg-secondary rounded-lg">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-foreground">Progress</span>
-            <span className="text-xs text-muted-foreground">{completedItems}/{totalItems}</span>
+
+        <div className="mt-3 px-3 py-2.5 bg-secondary rounded-lg">
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Progress</span>
+            <span className="text-xs text-muted-foreground">{completedItems} / {totalItems} items</span>
           </div>
-          <div className="w-full bg-border rounded-full h-2">
-            <div 
-              className="bg-primary h-2 rounded-full transition-all duration-300" 
+          <div className="w-full bg-border rounded-full h-1.5">
+            <div
+              className="bg-primary h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
-            ></div>
+            />
           </div>
         </div>
 
         {Object.keys(groupedItems).length === 0 ? (
           <div className="flex flex-col items-center justify-center mt-16 text-center px-6">
-            <div className="text-6xl mb-4">🛒</div>
-            <p className="text-lg font-semibold text-foreground mb-2">Your list is empty</p>
-            <p className="text-sm text-muted-foreground mb-6">Tap the + button to add your first item!</p>
+            <div className="text-5xl mb-3">🛒</div>
+            <p className="text-base font-semibold text-foreground mb-1">Your list is empty</p>
+            <p className="text-sm text-muted-foreground mb-5">Tap the + button in the top-right to add items.</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+              className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               Add Item
             </button>
           </div>
         ) : (
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 space-y-3">
             {Object.entries(groupedItems).map(([category, categoryItems]) => (
               <div key={category}>
-                <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5 px-0.5">
                   <span>{categoryEmojis[category] || '📦'}</span>
                   <span>{category}</span>
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {categoryItems.map(item => (
                     <ItemRow
                       key={item.id}
@@ -233,13 +233,6 @@ export default function ShoppingListApp() {
       </div>
 
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-      
-      <button
-        onClick={() => setShowAddModal(true)}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-shadow"
-      >
-        +
-      </button>
 
       {showAddModal && (
         <AddItemModal

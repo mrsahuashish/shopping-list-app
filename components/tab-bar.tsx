@@ -18,14 +18,14 @@ export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`flex-1 py-3 px-4 text-center transition-colors ${
+          className={`flex-1 py-2.5 px-4 text-center transition-colors ${
             activeTab === tab.id
               ? 'text-primary border-t-2 border-primary font-semibold'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <div className="flex flex-col items-center gap-1">
-            <span className="text-lg">{tab.icon}</span>
+            <span className="text-base">{tab.icon}</span>
             <span className="text-xs font-medium">{tab.label}</span>
           </div>
         </button>
