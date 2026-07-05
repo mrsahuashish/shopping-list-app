@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ShoppingItem, categoryEmojis, getUserCategories, saveUserCategory } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
+import { uploadToImgBB } from '@/lib/imgbb';
 
 interface EditItemModalProps {
   item: ShoppingItem;
@@ -12,19 +13,6 @@ interface EditItemModalProps {
 }
 
 const PRESET_CATEGORIES = Object.entries(categoryEmojis);
-const IMGBB_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY;
-
-async function uploadToImgBB(file: File): Promise<string> {
-  const form = new FormData();
-  form.append('image', file);
-  const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!res.ok) throw new Error('Upload failed');
-  const json = await res.json();
-  return json.data.url as string;
-}
 
 export default function EditItemModal({ item, onSave, onClose }: EditItemModalProps) {
   const { user } = useAuth();
