@@ -252,6 +252,15 @@ export async function addItem(dateStr: string, userId: string, item: ShoppingIte
       items: [...items, item],
       updatedAt: new Date().toISOString(),
     });
+  } else {
+    // Document doesn't exist yet (e.g. past date never opened) — create it
+    await setDoc(docRef, {
+      userId,
+      date: dateStr,
+      items: [item],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
   }
 }
 

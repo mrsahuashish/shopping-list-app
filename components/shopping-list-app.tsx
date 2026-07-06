@@ -44,19 +44,43 @@ export default function ShoppingListApp() {
   const [loading, setLoading] = useState(true);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
 
-  const dateStr = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const [dateStr, setDateStr] = useState(today);
+  const isToday = dateStr === today;
+
+  const goToPrevDay = () => {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    setDateStr(d.toISOString().split('T')[0]);
+  };
+
+  const goToNextDay = () => {
+    if (isToday) return;
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    setDateStr(d.toISOString().split('T')[0]);
+  };
+
+  // Clear items immediately when navigating to avoid briefly showing the wrong date's list
+  useEffect(() => {
+    setItems([]);
+    itemsRef.current = [];
+  }, [dateStr]);
 
   useEffect(() => {
     if (!authLoading) {
       if (user) {
-        initializeShoppingList(dateStr, user.uid).then(() => {
+        if (isToday) {
+          // Only auto-create the document for today
+          initializeShoppingList(dateStr, user.uid).then(() => setLoading(false));
+        } else {
           setLoading(false);
-        });
+        }
       } else {
         setLoading(false);
       }
     }
-  }, [dateStr, user, authLoading]);
+  }, [dateStr, user, authLoading, isToday]);
 
   useEffect(() => {
     if (user) {
@@ -255,7 +279,7 @@ export default function ShoppingListApp() {
       <Header onLogout={handleLogout} onAddItem={() => setShowAddModal(true)} />
 
       <div className="flex-1 overflow-y-auto pb-16 px-4 pt-3 md:max-w-2xl md:mx-auto md:w-full">
-        <DateCard date={dateStr} />
+        <DateCard date={dateStr} isToday={isToday} onPrev={goToPrevDay} onNext={goToNextDay} />
 
         {/* Progress bar */}
         <div className="mt-3 px-3 py-2.5 bg-secondary rounded-lg">
@@ -320,14 +344,22 @@ export default function ShoppingListApp() {
             ) : (
               <>
                 <div className="text-5xl mb-3">🛒</div>
-                <p className="text-base font-semibold text-foreground mb-1">Your list is empty</p>
-                <p className="text-sm text-muted-foreground mb-5">Tap the + button in the top-right to add items.</p>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                >
-                  Add Item
-                </button>
+                <p className="text-base font-semibold text-foreground mb-1">
+                  {isToday ? 'Your list is empty' : 'No items for this day'}
+                </p>
+                <p className="text-sm text-muted-foreground mb-5">
+                  {isToday
+                    ? 'Tap the + button in the top-right to add items.'
+                    : 'Nothing was added on this date.'}
+                </p>
+                {isToday && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    Add Item
+                  </button>
+                )}
               </>
             )}
           </div>
