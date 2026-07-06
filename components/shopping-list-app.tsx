@@ -42,6 +42,7 @@ export default function ShoppingListApp() {
   const [viewImageItem, setViewImageItem] = useState<ShoppingItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dateLoading, setDateLoading] = useState(false);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
 
   const today = new Date().toISOString().split('T')[0];
@@ -61,11 +62,15 @@ export default function ShoppingListApp() {
     setDateStr(d.toISOString().split('T')[0]);
   };
 
-  // Clear items immediately when navigating to avoid briefly showing the wrong date's list
+  // On date change: clear items, reset filters, switch to All tab on past dates
   useEffect(() => {
     setItems([]);
     itemsRef.current = [];
-  }, [dateStr]);
+    setSelectedCategory(null);
+    setDateLoading(true);
+    // Past dates: default to All so done items aren't hidden by the Today (pending) filter
+    setActiveTab(dateStr === today ? 'today' : 'all');
+  }, [dateStr]); // today is stable within a session — intentionally omitted from deps
 
   useEffect(() => {
     if (!authLoading) {
@@ -87,6 +92,7 @@ export default function ShoppingListApp() {
       const unsubscribe = subscribeToShoppingList(dateStr, user.uid, (newItems) => {
         setItems(newItems);
         itemsRef.current = newItems;
+        setDateLoading(false); // data arrived — clear the navigation loading state
       });
       return () => unsubscribe();
     }
@@ -301,8 +307,16 @@ export default function ShoppingListApp() {
           </div>
         </div>
 
-        {/* Category filter pills — only shown when 2+ categories exist */}
-        {availableCategories.length > 1 && (
+        {/* Date navigation loading indicator */}
+        {dateLoading && (
+          <div className="flex items-center justify-center gap-2 mt-6 text-muted-foreground">
+            <div className="w-4 h-4 border-2 border-border rounded-full animate-spin border-t-primary" />
+            <span className="text-sm">Loading items…</span>
+          </div>
+        )}
+
+        {/* Category filter pills — only shown when 2+ categories exist and data is ready */}
+        {!dateLoading && availableCategories.length > 1 && (
           <div className="mt-3 -mx-4 px-4 overflow-x-auto scrollbar-none">
             <div className="flex gap-1.5 pb-0.5" style={{ width: 'max-content' }}>
               <button
@@ -333,79 +347,81 @@ export default function ShoppingListApp() {
           </div>
         )}
 
-        {/* Item list */}
-        {Object.keys(groupedItems).length === 0 ? (
-          <div className="flex flex-col items-center justify-center mt-16 text-center px-6">
-            {selectedCategory ? (
-              <>
-                <div className="text-4xl mb-3">{categoryEmojis[selectedCategory] || '📦'}</div>
-                <p className="text-base font-semibold text-foreground mb-1">No items in {selectedCategory}</p>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className="mt-3 px-4 py-1.5 text-xs font-medium border border-border rounded-full text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
-                >
-                  Clear filter
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="text-5xl mb-3">🛒</div>
-                <p className="text-base font-semibold text-foreground mb-1">
-                  {isToday ? 'Your list is empty' : 'No items for this day'}
-                </p>
-                <p className="text-sm text-muted-foreground mb-5">
-                  {isToday
-                    ? 'Tap the + button in the top-right to add items.'
-                    : 'Nothing was added on this date.'}
-                </p>
-                {isToday && (
+        {/* Item list — hidden while date data is loading */}
+        {!dateLoading && (
+          Object.keys(groupedItems).length === 0 ? (
+            <div className="flex flex-col items-center justify-center mt-16 text-center px-6">
+              {selectedCategory ? (
+                <>
+                  <div className="text-4xl mb-3">{categoryEmojis[selectedCategory] || '📦'}</div>
+                  <p className="text-base font-semibold text-foreground mb-1">No items in {selectedCategory}</p>
                   <button
-                    onClick={() => setShowAddModal(true)}
-                    className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    onClick={() => setSelectedCategory(null)}
+                    className="mt-3 px-4 py-1.5 text-xs font-medium border border-border rounded-full text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
                   >
-                    Add Item
+                    Clear filter
                   </button>
-                )}
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {Object.entries(groupedItems).map(([category, categoryItems]) => (
-              <div key={category}>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5 px-0.5">
-                  <span>{categoryEmojis[category] || '📦'}</span>
-                  <span>{category}</span>
-                  <span className="ml-auto font-normal normal-case tracking-normal">
-                    {categoryItems.length}
-                  </span>
-                </h3>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(e) => handleCategoryDragEnd(e, category)}
-                >
-                  <SortableContext
-                    items={categoryItems.map(i => i.id)}
-                    strategy={verticalListSortingStrategy}
+                </>
+              ) : (
+                <>
+                  <div className="text-5xl mb-3">🛒</div>
+                  <p className="text-base font-semibold text-foreground mb-1">
+                    {isToday ? 'Your list is empty' : 'No items for this day'}
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-5">
+                    {isToday
+                      ? 'Tap the + button in the top-right to add items.'
+                      : 'Nothing was added on this date.'}
+                  </p>
+                  {isToday && (
+                    <button
+                      onClick={() => setShowAddModal(true)}
+                      className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    >
+                      Add Item
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {Object.entries(groupedItems).map(([category, categoryItems]) => (
+                <div key={category}>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5 px-0.5">
+                    <span>{categoryEmojis[category] || '📦'}</span>
+                    <span>{category}</span>
+                    <span className="ml-auto font-normal normal-case tracking-normal">
+                      {categoryItems.length}
+                    </span>
+                  </h3>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(e) => handleCategoryDragEnd(e, category)}
                   >
-                    <div className="space-y-1.5">
-                      {categoryItems.map(item => (
-                        <SortableItemRow
-                          key={item.id}
-                          item={item}
-                          onToggle={() => handleToggleItem(item.id)}
-                          onDelete={() => setDeleteItemId(item.id)}
-                          onEdit={() => setEditItem(item)}
-                          onViewImage={item.imageUrl ? () => setViewImageItem(item) : undefined}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              </div>
-            ))}
-          </div>
+                    <SortableContext
+                      items={categoryItems.map(i => i.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-1.5">
+                        {categoryItems.map(item => (
+                          <SortableItemRow
+                            key={item.id}
+                            item={item}
+                            onToggle={() => handleToggleItem(item.id)}
+                            onDelete={() => setDeleteItemId(item.id)}
+                            onEdit={() => setEditItem(item)}
+                            onViewImage={item.imageUrl ? () => setViewImageItem(item) : undefined}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 
