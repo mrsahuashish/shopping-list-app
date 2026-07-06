@@ -279,7 +279,13 @@ export default function ShoppingListApp() {
       <Header onLogout={handleLogout} onAddItem={() => setShowAddModal(true)} />
 
       <div className="flex-1 overflow-y-auto pb-16 px-4 pt-3 md:max-w-2xl md:mx-auto md:w-full">
-        <DateCard date={dateStr} isToday={isToday} onPrev={goToPrevDay} onNext={goToNextDay} />
+        <DateCard
+          date={dateStr}
+          isToday={isToday}
+          onPrev={goToPrevDay}
+          onNext={goToNextDay}
+          onSelectDate={setDateStr}
+        />
 
         {/* Progress bar */}
         <div className="mt-3 px-3 py-2.5 bg-secondary rounded-lg">

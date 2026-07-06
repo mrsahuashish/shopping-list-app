@@ -1,8 +1,14 @@
+'use client';
+
+import { useState } from 'react';
+import CalendarPicker from './calendar-picker';
+
 interface DateCardProps {
   date: string;
   isToday: boolean;
   onPrev: () => void;
   onNext: () => void;
+  onSelectDate: (date: string) => void;
 }
 
 function getRelativeLabel(date: string, today: string): string {
@@ -14,8 +20,10 @@ function getRelativeLabel(date: string, today: string): string {
   return '';
 }
 
-export default function DateCard({ date, isToday, onPrev, onNext }: DateCardProps) {
+export default function DateCard({ date, isToday, onPrev, onNext, onSelectDate }: DateCardProps) {
   const today = new Date().toISOString().split('T')[0];
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
   const dateObj = new Date(date + 'T00:00:00');
   const formattedDate = dateObj.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -26,47 +34,69 @@ export default function DateCard({ date, isToday, onPrev, onNext }: DateCardProp
   const label = getRelativeLabel(date, today);
 
   return (
-    <div className="flex items-center gap-1 px-1 py-1.5">
-      {/* Prev day */}
-      <button
-        onClick={onPrev}
-        className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        aria-label="Previous day"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
+    <div className="relative">
+      <div className="flex items-center gap-1 px-1 py-1.5">
+        {/* Prev day */}
+        <button
+          onClick={onPrev}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          aria-label="Previous day"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
-      {/* Date display */}
-      <div className="flex-1 flex items-center justify-center gap-2 px-2 py-1.5 bg-accent/20 border border-accent/40 rounded-lg">
-        <svg className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        <span className="text-xs font-semibold text-foreground">{formattedDate}</span>
-        {label && (
-          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-            isToday
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-secondary text-muted-foreground'
-          }`}>
-            {label}
-          </span>
-        )}
+        {/* Date display — tap to open calendar */}
+        <button
+          onClick={() => setCalendarOpen(o => !o)}
+          className={`flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-lg border transition-colors ${
+            calendarOpen
+              ? 'bg-primary/10 border-primary/40 text-primary'
+              : 'bg-accent/20 border-accent/40 hover:border-primary/40 hover:bg-accent/30'
+          }`}
+          aria-label="Open date picker"
+        >
+          <svg className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-xs font-semibold text-foreground">{formattedDate}</span>
+          {label && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+              isToday
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-muted-foreground'
+            }`}>
+              {label}
+            </span>
+          )}
+          <svg className="w-3 h-3 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Next day */}
+        <button
+          onClick={onNext}
+          disabled={isToday}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Next day"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
 
-      {/* Next day */}
-      <button
-        onClick={onNext}
-        disabled={isToday}
-        className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        aria-label="Next day"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
+      {/* Calendar dropdown */}
+      {calendarOpen && (
+        <CalendarPicker
+          selectedDate={date}
+          onSelect={(d) => { onSelectDate(d); }}
+          onClose={() => setCalendarOpen(false)}
+        />
+      )}
     </div>
   );
 }
